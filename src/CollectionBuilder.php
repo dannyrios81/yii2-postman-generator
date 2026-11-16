@@ -2,70 +2,102 @@
 
 namespace iguazoft\postman;
 
-use Yii;
-
 /**
- * CollectionBuilder - Construye la estructura JSON de una colección Postman
+ * Builds a Postman Collection v2.1 document.
+ *
+ * The output also imports cleanly into Insomnia, Bruno, Hoppscotch and other clients
+ * that read the Postman v2.1 format.
  */
 class CollectionBuilder
 {
-    protected $collection = [];
+    const SCHEMA = 'https://schema.getpostman.com/json/collection/v2.1.0/collection.json';
+
+    /** @var string */
+    protected $name = 'API Collection';
+
+    /** @var string */
+    protected $description = '';
+
+    /** @var array key => value */
+    protected $variables = [];
+
+    /** @var array Requests without folder */
+    protected $items = [];
+
+    /** @var array folder name => folder item */
     protected $folders = [];
 
+    /** @var string|null */
+    protected $postmanId;
+
     /**
-     * Inicializa una nueva colección
-     * 
-     * @param string $name Nombre de la colección
-     * @param string $description Descripción
-     * @param array $variables Variables de la colección
+     * Starts a new, empty collection.
+     *
+     * @param string $name
+     * @param string $description
+     * @param array $variables key => value
      * @return $this
      */
     public function init(string $name, string $description = '', array $variables = []): self
     {
-        $this->collection = [
-            'info' => [
-                '_postman_id' => $this->generateUuid(),
-                'name' => $name,
-                'description' => $description,
-                'schema' => 'https://schema.getpostman.com/json/collection/v2.1.0/collection.json',
-            ],
-            'variable' => [],
-            'item' => [],
-        ];
+        $this->name = $name;
+        $this->description = $description;
+        $this->variables = [];
+        $this->items = [];
+        $this->folders = [];
+        $this->postmanId = null;
 
-        // Añadir variables
+        return $this->addVariables($variables);
+    }
+
+    /**
+     * @param string $name
+     * @return $this
+     */
+    public function setName(string $name): self
+    {
+        $this->name = $name;
+
+        return $this;
+    }
+
+    /**
+     * @param string $description
+     * @return $this
+     */
+    public function setDescription(string $description): self
+    {
+        $this->description = $description;
+
+        return $this;
+    }
+
+    /**
+     * Adds collection variables. Existing keys are kept unless $overwrite is true.
+     *
+     * @param array $variables key => value
+     * @param bool $overwrite
+     * @return $this
+     */
+    public function addVariables(array $variables, bool $overwrite = true): self
+    {
         foreach ($variables as $key => $value) {
-            $this->collection['variable'][] = [
-                'key' => $key,
-                'value' => $value,
-                'type' => 'string',
-            ];
-        }
-
-        // Variables por defecto
-        if (!isset($variables['baseUrl'])) {
-            $this->collection['variable'][] = [
-                'key' => 'baseUrl',
-                'value' => 'http://localhost',
-                'type' => 'string',
-            ];
-        }
-        if (!isset($variables['token'])) {
-            $this->collection['variable'][] = [
-                'key' => 'token',
-                'value' => '',
-                'type' => 'string',
-            ];
+            if ($value === null) {
+                continue;
+            }
+            if ($overwrite || !array_key_exists($key, $this->variables)) {
+                $this->variables[$key] = (string) $value;
+            }
         }
 
         return $this;
     }
 
     /**
-     * Añade una carpeta (folder) a la colección
-     * 
-     * @param string $name Nombre de la carpeta
-     * @param string $description Descripción
+     * Adds an empty folder (no-op when it already exists).
+     *
+     * @param string $name
+     * @param string $description
      * @return $this
      */
     public function addFolder(string $name, string $description = ''): self
@@ -82,9 +114,9 @@ class CollectionBuilder
     }
 
     /**
-     * Añade una request a la colección
-     * 
-     * @param array $requestData Datos del request parseados
+     * Adds a request parsed by {@see AnnotationParser}.
+     *
+     * @param array $requestData
      * @return $this
      */
     public function addRequest(array $requestData): self
@@ -95,140 +127,42 @@ class CollectionBuilder
             $this->addFolder($requestData['folder']);
             $this->folders[$requestData['folder']]['item'][] = $request;
         } else {
-            $this->collection['item'][] = $request;
+            $this->items[] = $request;
         }
 
         return $this;
     }
 
     /**
-     * Construye un objeto request de Postman
-     * 
-     * @param array $data
-     * @return array
-     */
-    protected function buildRequest(array $data): array
-    {
-        $request = [
-            'name' => $data['name'],
-            'request' => [
-                'method' => strtoupper($data['method'] ?? 'GET'),
-                'header' => [],
-                'url' => $this->buildUrl($data['path'] ?? ''),
-            ],
-            'response' => [],
-        ];
-
-        // Añadir descripción
-        if (!empty($data['description'])) {
-            $request['request']['description'] = $data['description'];
-        }
-
-        // Añadir autenticación
-        if (!empty($data['auth'])) {
-            $request['request']['auth'] = $this->buildAuth($data['auth']);
-        }
-
-        // Añadir body
-        if (!empty($data['body'])) {
-            $request['request']['header'][] = [
-                'key' => 'Content-Type',
-                'value' => 'application/json',
-            ];
-            $request['request']['body'] = [
-                'mode' => 'raw',
-                'raw' => json_encode($data['body'], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE),
-                'options' => [
-                    'raw' => [
-                        'language' => 'json',
-                    ],
-                ],
-            ];
-        }
-
-        // Añadir headers
-        if (!empty($data['headers'])) {
-            foreach ($data['headers'] as $key => $value) {
-                $request['request']['header'][] = [
-                    'key' => $key,
-                    'value' => $value,
-                ];
-            }
-        }
-
-        return $request;
-    }
-
-    /**
-     * Construye la URL con variables
-     * 
-     * @param string $path
-     * @return array
-     */
-    protected function buildUrl(string $path): array
-    {
-        $pathParts = array_filter(explode('/', ltrim($path, '/')));
-
-        return [
-            'raw' => '{{baseUrl}}' . $path,
-            'host' => ['{{baseUrl}}'],
-            'path' => array_values($pathParts),
-        ];
-    }
-
-    /**
-     * Construye el objeto de autenticación
-     * 
-     * @param array $auth
-     * @return array
-     */
-    protected function buildAuth(array $auth): array
-    {
-        if ($auth['type'] === 'bearer') {
-            return [
-                'type' => 'bearer',
-                'bearer' => [
-                    [
-                        'key' => 'token',
-                        'value' => $auth['token'] ?? '{{token}}',
-                        'type' => 'string',
-                    ],
-                ],
-            ];
-        }
-
-        // Basic auth
-        if ($auth['type'] === 'basic') {
-            return [
-                'type' => 'basic',
-                'basic' => [
-                    ['key' => 'username', 'value' => $auth['username'] ?? '', 'type' => 'string'],
-                    ['key' => 'password', 'value' => $auth['password'] ?? '', 'type' => 'string'],
-                ],
-            ];
-        }
-
-        return ['type' => 'noauth'];
-    }
-
-    /**
-     * Genera la colección final como array
-     * 
+     * Returns the collection as an array. Can be called any number of times.
+     *
      * @return array
      */
     public function build(): array
     {
-        // Añadir carpetas al item principal
-        foreach ($this->folders as $folder) {
-            $this->collection['item'][] = $folder;
+        if ($this->postmanId === null) {
+            $this->postmanId = $this->generateUuid($this->name);
         }
 
-        return $this->collection;
+        $variables = $this->variables + ['baseUrl' => 'http://localhost', 'token' => ''];
+        $variableList = [];
+        foreach ($variables as $key => $value) {
+            $variableList[] = ['key' => $key, 'value' => $value, 'type' => 'string'];
+        }
+
+        return [
+            'info' => [
+                '_postman_id' => $this->postmanId,
+                'name' => $this->name,
+                'description' => $this->description,
+                'schema' => self::SCHEMA,
+            ],
+            'variable' => $variableList,
+            'item' => array_merge($this->items, array_values($this->folders)),
+        ];
     }
 
     /**
-     * Genera la colección como JSON
-     * 
      * @return string
      */
     public function toJson(): string
@@ -237,22 +171,151 @@ class CollectionBuilder
     }
 
     /**
-     * Genera un UUID v4
-     * 
+     * @param array $data
+     * @return array
+     */
+    protected function buildRequest(array $data): array
+    {
+        $request = [
+            'name' => $data['name'],
+            'request' => [
+                'method' => strtoupper(isset($data['method']) ? $data['method'] : 'GET'),
+                'header' => [],
+                'url' => $this->buildUrl(
+                    isset($data['path']) ? (string) $data['path'] : '',
+                    isset($data['queryParams']) ? $data['queryParams'] : []
+                ),
+            ],
+            'response' => [],
+        ];
+
+        if (!empty($data['description'])) {
+            $request['request']['description'] = $data['description'];
+        }
+
+        if (!empty($data['auth'])) {
+            $request['request']['auth'] = $this->buildAuth($data['auth']);
+        }
+
+        if (isset($data['body']) && $data['body'] !== null) {
+            $request['request']['header'][] = ['key' => 'Content-Type', 'value' => 'application/json'];
+            $request['request']['body'] = [
+                'mode' => 'raw',
+                'raw' => json_encode($data['body'], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
+                'options' => ['raw' => ['language' => 'json']],
+            ];
+        }
+
+        if (!empty($data['headers'])) {
+            foreach ($data['headers'] as $key => $value) {
+                $request['request']['header'][] = ['key' => (string) $key, 'value' => (string) $value];
+            }
+        }
+
+        return $request;
+    }
+
+    /**
+     * Builds the URL object. `:id` and `{id}` path segments become Postman path variables.
+     *
+     * @param string $path
+     * @param array $queryParams key => value
+     * @return array
+     */
+    protected function buildUrl(string $path, array $queryParams = []): array
+    {
+        $path = $path === '' ? '' : '/' . ltrim($path, '/');
+
+        $segments = [];
+        $pathVariables = [];
+        foreach (explode('/', ltrim($path, '/')) as $segment) {
+            if ($segment === '') {
+                continue;
+            }
+            if (preg_match('/^\{(\w+)\}$/', $segment, $m)) {
+                $segment = ':' . $m[1];
+            }
+            if ($segment[0] === ':') {
+                $pathVariables[] = ['key' => substr($segment, 1), 'value' => ''];
+            }
+            $segments[] = $segment;
+        }
+
+        $raw = '{{baseUrl}}' . ($segments ? '/' . implode('/', $segments) : '');
+
+        $url = [
+            'raw' => $raw,
+            'host' => ['{{baseUrl}}'],
+            'path' => $segments,
+        ];
+
+        if ($queryParams) {
+            $query = [];
+            $pairs = [];
+            foreach ($queryParams as $key => $value) {
+                $query[] = ['key' => (string) $key, 'value' => (string) $value];
+                $pairs[] = $key . '=' . $value;
+            }
+            $url['query'] = $query;
+            $url['raw'] .= '?' . implode('&', $pairs);
+        }
+
+        if ($pathVariables) {
+            $url['variable'] = $pathVariables;
+        }
+
+        return $url;
+    }
+
+    /**
+     * @param array $auth
+     * @return array
+     */
+    protected function buildAuth(array $auth): array
+    {
+        switch ($auth['type']) {
+            case 'bearer':
+                return [
+                    'type' => 'bearer',
+                    'bearer' => [
+                        ['key' => 'token', 'value' => isset($auth['token']) ? $auth['token'] : '{{token}}', 'type' => 'string'],
+                    ],
+                ];
+            case 'basic':
+                return [
+                    'type' => 'basic',
+                    'basic' => [
+                        ['key' => 'username', 'value' => isset($auth['username']) ? $auth['username'] : '', 'type' => 'string'],
+                        ['key' => 'password', 'value' => isset($auth['password']) ? $auth['password'] : '', 'type' => 'string'],
+                    ],
+                ];
+            case 'apikey':
+                return [
+                    'type' => 'apikey',
+                    'apikey' => [
+                        ['key' => 'key', 'value' => isset($auth['key']) ? $auth['key'] : 'X-Api-Key', 'type' => 'string'],
+                        ['key' => 'value', 'value' => isset($auth['value']) ? $auth['value'] : '{{apiKey}}', 'type' => 'string'],
+                        ['key' => 'in', 'value' => 'header', 'type' => 'string'],
+                    ],
+                ];
+            default:
+                return ['type' => 'noauth'];
+        }
+    }
+
+    /**
+     * Name-based UUID (v5 layout), so regenerating the same collection keeps the same id.
+     * Postman then recognises a re-import as the same collection, and diffs in CI stay clean.
+     *
+     * @param string $name
      * @return string
      */
-    protected function generateUuid(): string
+    protected function generateUuid(string $name): string
     {
-        return sprintf(
-            '%04x%04x-%04x-%04x-%04x-%04x%04x%04x',
-            mt_rand(0, 0xffff),
-            mt_rand(0, 0xffff),
-            mt_rand(0, 0xffff),
-            mt_rand(0, 0x0fff) | 0x4000,
-            mt_rand(0, 0x3fff) | 0x8000,
-            mt_rand(0, 0xffff),
-            mt_rand(0, 0xffff),
-            mt_rand(0, 0xffff)
-        );
+        $bytes = substr(sha1('iguazoft/yii2-postman-generator:' . $name, true), 0, 16);
+        $bytes[6] = chr((ord($bytes[6]) & 0x0f) | 0x50);
+        $bytes[8] = chr((ord($bytes[8]) & 0x3f) | 0x80);
+
+        return vsprintf('%s%s-%s-%s-%s-%s%s%s', str_split(bin2hex($bytes), 4));
     }
 }

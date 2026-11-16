@@ -1,0 +1,198 @@
+{
+    "info": {
+        "_postman_id": "aac645e2-2b7a-5537-bc96-6f2c111dd44a",
+        "name": "Shop API",
+        "description": "Public API (v1), used by the mobile app",
+        "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+    },
+    "variable": [
+        {
+            "key": "baseUrl",
+            "value": "https://api.shop.test",
+            "type": "string"
+        },
+        {
+            "key": "apiVersion",
+            "value": "v1",
+            "type": "string"
+        },
+        {
+            "key": "storeId",
+            "value": "42",
+            "type": "string"
+        },
+        {
+            "key": "token",
+            "value": "",
+            "type": "string"
+        }
+    ],
+    "item": [
+        {
+            "name": "Delete product",
+            "request": {
+                "method": "DELETE",
+                "header": [],
+                "url": {
+                    "raw": "{{baseUrl}}/api/products/:id",
+                    "host": [
+                        "{{baseUrl}}"
+                    ],
+                    "path": [
+                        "api",
+                        "products",
+                        ":id"
+                    ],
+                    "variable": [
+                        {
+                            "key": "id",
+                            "value": ""
+                        }
+                    ]
+                },
+                "auth": {
+                    "type": "apikey",
+                    "apikey": [
+                        {
+                            "key": "key",
+                            "value": "X-Api-Key",
+                            "type": "string"
+                        },
+                        {
+                            "key": "value",
+                            "value": "{{apiKey}}",
+                            "type": "string"
+                        },
+                        {
+                            "key": "in",
+                            "value": "header",
+                            "type": "string"
+                        }
+                    ]
+                }
+            },
+            "response": []
+        },
+        {
+            "name": "Users",
+            "description": "",
+            "item": [
+                {
+                    "name": "List users",
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/users?page=1&per-page=20",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "users"
+                            ],
+                            "query": [
+                                {
+                                    "key": "page",
+                                    "value": "1"
+                                },
+                                {
+                                    "key": "per-page",
+                                    "value": "20"
+                                }
+                            ]
+                        },
+                        "description": "Returns users (paginated), newest first",
+                        "auth": {
+                            "type": "bearer",
+                            "bearer": [
+                                {
+                                    "key": "token",
+                                    "value": "{{token}}",
+                                    "type": "string"
+                                }
+                            ]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Create user",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "X-Request-Id",
+                                "value": "{{$guid}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/users",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "users"
+                            ]
+                        },
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"name\": \"John (Johnny) Doe\",\n    \"roles\": [\n        \"admin\",\n        \"editor\"\n    ],\n    \"address\": {\n        \"city\": \"Bogotá\"\n    }\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "View user",
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/users/:id",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "users",
+                                ":id"
+                            ],
+                            "variable": [
+                                {
+                                    "key": "id",
+                                    "value": ""
+                                }
+                            ]
+                        },
+                        "auth": {
+                            "type": "basic",
+                            "basic": [
+                                {
+                                    "key": "username",
+                                    "value": "{{username}}",
+                                    "type": "string"
+                                },
+                                {
+                                    "key": "password",
+                                    "value": "{{password}}",
+                                    "type": "string"
+                                }
+                            ]
+                        }
+                    },
+                    "response": []
+                }
+            ]
+        }
+    ]
+}

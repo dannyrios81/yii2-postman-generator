@@ -1,36 +1,57 @@
 # Yii2 Postman Generator
 
-Extensión para Yii2 que genera colecciones de Postman automáticamente desde anotaciones PHPDoc.
+[![tests](https://github.com/dannyrios81/yii2-postman-generator/actions/workflows/tests.yml/badge.svg)](https://github.com/dannyrios81/yii2-postman-generator/actions/workflows/tests.yml)
+[![Latest Stable Version](https://poser.pugx.org/iguazoft/yii2-postman-generator/v/stable)](https://packagist.org/packages/iguazoft/yii2-postman-generator)
+[![Total Downloads](https://poser.pugx.org/iguazoft/yii2-postman-generator/downloads)](https://packagist.org/packages/iguazoft/yii2-postman-generator)
+[![PHP](https://img.shields.io/badge/php-7.4%20to%208.4-777bb4.svg)](https://php.net/)
+[![License](https://poser.pugx.org/iguazoft/yii2-postman-generator/license)](LICENSE)
 
-## Instalación
+**Keep your Postman collection in sync with your Yii2 API.** Annotate your controller actions, run one command, and import the result into Postman, Insomnia, Bruno or Hoppscotch.
 
-### Vía Composer (recomendado)
+No OpenAPI spec to write and maintain, no extra dependencies: only Yii2.
+
+[Leer en español](README.es.md)
+
+```php
+/**
+ * @Postman\Request("Create user")
+ * @Postman\Folder("Users")
+ * @Postman\Method("POST")
+ * @Postman\Path("/api/users")
+ * @Postman\Auth("bearer", "{{token}}")
+ * @Postman\Body({"name": "John Doe", "email": "john@example.com"})
+ */
+public function actionCreate() { /* ... */ }
+```
 
 ```bash
-composer require iguazoft/yii2-postman-generator
+$ php yii postman/generate
+Scanning:
+  - /var/www/app/controllers
+
+✓ 12 request(s) written to /var/www/app/docs/api.postman_collection.json
 ```
 
-### Instalación local
+See a full generated file in [`docs/example.postman_collection.json`](docs/example.postman_collection.json).
 
-Añadir al `composer.json`:
+## Why
 
-```json
-{
-    "repositories": [
-        {
-            "type": "path",
-            "url": "packages/yii2-postman-generator"
-        }
-    ],
-    "require": {
-        "iguazoft/yii2-postman-generator": "*"
-    }
-}
+- **The docs live next to the code.** When you change an endpoint, the annotation is right there.
+- **One command, repeatable.** Run it in CI and commit the JSON, so the collection never drifts.
+- **Postman Collection v2.1.** It imports into Postman, Insomnia, Bruno, Hoppscotch and anything else that reads that format.
+- **Lightweight.** Unlike Swagger/OpenAPI tooling, you only describe what a client needs to call the endpoint.
+
+## Installation
+
+```bash
+composer require --dev iguazoft/yii2-postman-generator
 ```
 
-## Uso Rápido
+The extension registers the `postman` console command automatically through Yii2's extension bootstrap. Nothing to configure.
 
-### 1. Añadir anotaciones a tus controladores
+## Usage
+
+### 1. Annotate your controllers
 
 ```php
 <?php
@@ -40,134 +61,126 @@ namespace app\controllers;
 use yii\rest\Controller;
 
 /**
- * @Postman\Collection("Mi API")
- * @Postman\Description("API REST de mi aplicación")
+ * @Postman\Collection("Shop API")
+ * @Postman\Description("Public API used by the mobile app")
+ * @Postman\BaseUrl("https://api.shop.test")
+ * @Postman\Variable("apiVersion", "v1")
  */
 class UserController extends Controller
 {
     /**
-     * @Postman\Request("Listar usuarios")
-     * @Postman\Folder("Usuarios")
-     * @Postman\Method("GET")
+     * @Postman\Request("List users")
+     * @Postman\Folder("Users")
      * @Postman\Path("/api/users")
      * @Postman\Auth("bearer", "{{token}}")
+     * @Postman\Query("page", "1")
+     * @Postman\Query("per-page", "20")
      */
-    public function actionIndex()
-    {
-        // ...
-    }
-    
+    public function actionIndex() { /* ... */ }
+
     /**
-     * @Postman\Request("Crear usuario")
-     * @Postman\Folder("Usuarios")
-     * @Postman\Method("POST")
-     * @Postman\Path("/api/users")
-     * @Postman\Auth("bearer", "{{token}}")
-     * @Postman\Body({
-     *     "name": "John Doe",
-     *     "email": "john@example.com"
-     * })
+     * @Postman\Request("View user")
+     * @Postman\Folder("Users")
+     * @Postman\Path("/api/users/{id}")
      */
-    public function actionCreate()
-    {
-        // ...
-    }
+    public function actionView($id) { /* ... */ }
 }
 ```
 
-### 2. Generar la colección
+Only actions with `@Postman\Request` are exported.
+
+### 2. Generate
 
 ```bash
 php yii postman/generate
 ```
 
-### 3. Opciones disponibles
+| Option | Alias | Default | Description |
+|---|---|---|---|
+| `--output` | `-o` | `@app/docs/api.postman_collection.json` | Output file. Yii aliases allowed. |
+| `--dirs` | `-d` | `@app/controllers` | Comma separated directories, scanned recursively. |
+| `--name` | `-n` | `@Postman\Collection` or `API Collection` | Collection name. |
+| `--base-url` | `-u` | `@Postman\BaseUrl` or `http://localhost` | Value of `{{baseUrl}}`. |
+| `--include-hidden` | `-a` | `false` | Also export actions marked `@Postman\Hidden`. |
 
 ```bash
-# Especificar archivo de salida
-php yii postman/generate --output=docs/api.json
-
-# Escanear múltiples directorios
-php yii postman/generate --dirs=@app/controllers,@app/modules/api/controllers
-
-# Especificar nombre y URL base
-php yii postman/generate --name="Mi API" --baseUrl=http://api.example.com
-
-# Ver ayuda sobre anotaciones
-php yii postman/help
+php yii postman/generate -d=@app/modules/api/v1/controllers,@app/modules/api/v2/controllers -o=@app/docs/api.json
+php yii postman/help   # annotation reference
 ```
 
-## Anotaciones Disponibles
+### 3. Import
 
-### Anotaciones de Clase
+In Postman: **Import → File → `api.postman_collection.json`**. Set `token` in the collection variables and you are ready.
 
-| Anotación | Descripción |
-|-----------|-------------|
-| `@Postman\Collection("nombre")` | Nombre de la colección |
-| `@Postman\Description("desc")` | Descripción de la colección |
-| `@Postman\BaseUrl("url")` | URL base por defecto |
-| `@Postman\Variable("key", "value")` | Variable de la colección |
+## Annotation reference
 
-### Anotaciones de Método
+### Class level
 
-| Anotación | Descripción | Requerido |
-|-----------|-------------|-----------|
-| `@Postman\Request("nombre")` | Nombre del request | ✅ Sí |
-| `@Postman\Method("POST")` | Método HTTP | No (default: GET) |
-| `@Postman\Path("/api/endpoint")` | Ruta del endpoint | No |
-| `@Postman\Folder("Carpeta")` | Carpeta para agrupar | No |
-| `@Postman\Description("desc")` | Descripción | No |
-| `@Postman\Auth("bearer", "{{token}}")` | Autenticación | No |
-| `@Postman\Body({...})` | Body JSON | No |
-| `@Postman\Header("key", "value")` | Header HTTP | No |
-| `@Postman\Query("key", "value")` | Query parameter | No |
-| `@Postman\Hidden` | Ocultar endpoint | No |
+| Annotation | Description |
+|---|---|
+| `@Postman\Collection("Name")` | Collection name. The first one found wins. |
+| `@Postman\Description("Text")` | Collection description. |
+| `@Postman\BaseUrl("https://api.example.com")` | Default value of `{{baseUrl}}`. |
+| `@Postman\Variable("key", "value")` | Collection variable. Repeatable. |
 
-## Ocultar Endpoints
+### Action level
 
-Usa `@Postman\Hidden` para ocultar endpoints de la colección generada:
+| Annotation | Description |
+|---|---|
+| `@Postman\Request("Name")` | **Required.** Request name. |
+| `@Postman\Method("POST")` | HTTP method. Default `GET`. |
+| `@Postman\Path("/api/users/:id")` | Path. `:id` and `{id}` become Postman path variables. |
+| `@Postman\Folder("Users")` | Folder to group the request in. |
+| `@Postman\Description("Text")` | Request description. |
+| `@Postman\Auth("bearer", "{{token}}")` | Bearer token. |
+| `@Postman\Auth("basic", "{{user}}", "{{pass}}")` | Basic auth. |
+| `@Postman\Auth("apikey", "X-Api-Key", "{{apiKey}}")` | API key header. |
+| `@Postman\Body({...})` | JSON body. Can span several lines. |
+| `@Postman\Header("key", "value")` | Request header. Repeatable. |
+| `@Postman\Query("key", "value")` | Query parameter. Repeatable. |
+| `@Postman\Hidden` | Not exported unless `--include-hidden`. |
 
-```php
-/**
- * @Postman\Request("Endpoint Interno")
- * @Postman\Hidden
- */
-public function actionInterno() { }
-```
+Arguments can use double quotes, single quotes, or no quotes. Quoted values may contain commas and parentheses.
 
-Por defecto, los endpoints con `@Postman\Hidden` **NO** se incluyen en la colección.
-
-Para incluir **todos** los endpoints (incluyendo los ocultos):
-
-```bash
-php yii postman/generate --include-hidden
-# o
-php yii postman/generate -a
-```
-
-## Uso Programático
+## Programmatic use
 
 ```php
 use iguazoft\postman\PostmanGenerator;
 
 $generator = new PostmanGenerator([
-    'scanDirs' => [
-        '@app/controllers',
-        '@app/modules/api/v1/controllers',
-    ],
-    'collectionName' => 'Mi API',
-    'variables' => [
-        'baseUrl' => 'http://localhost:8080',
-    ],
+    'scanDirs' => ['@app/controllers', '@app/modules/api/controllers'],
+    'collectionName' => 'My API',              // optional, overrides @Postman\Collection
+    'variables' => ['baseUrl' => 'https://api.example.com'],
+    'includeHidden' => false,
 ]);
 
-// Guardar en archivo
-$generator->generate('@app/docs/api.postman_collection.json');
-
-// O obtener como JSON
-$json = $generator->generateJson();
+$generator->generate('@app/docs/api.postman_collection.json'); // write a file
+$json = $generator->generateJson();                           // or get the JSON
+$array = $generator->generateArray();                         // or the array
 ```
 
-## Licencia
+## Keep it in sync with CI
 
-MIT
+```yaml
+# .github/workflows/postman.yml
+- run: php yii postman/generate -o=@app/docs/api.postman_collection.json
+- run: git diff --exit-code docs/api.postman_collection.json || (echo "Run php yii postman/generate and commit the result" && exit 1)
+```
+
+## Requirements
+
+- PHP 7.4 to 8.4
+- Yii 2.0
+
+## Contributing
+
+Issues and pull requests are welcome.
+
+```bash
+composer install
+composer test
+```
+
+## License
+
+MIT. See [LICENSE](LICENSE).

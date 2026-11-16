@@ -7,50 +7,53 @@ use yii\base\Component;
 use yii\helpers\FileHelper;
 
 /**
- * PostmanGenerator - Componente principal para generar colecciones Postman
- * 
- * Uso:
+ * Scans Yii2 controllers and builds a Postman collection from their `@Postman\...` annotations.
+ *
  * ```php
- * $generator = new PostmanGenerator();
- * $generator->scanDirs = ['@app/modules/api/v1/controllers'];
- * $generator->generate('docs/api.postman_collection.json');
+ * $generator = new PostmanGenerator([
+ *     'scanDirs' => ['@app/modules/api/v1/controllers'],
+ * ]);
+ * $generator->generate('@app/docs/api.postman_collection.json');
  * ```
+ *
+ * Precedence for the collection name, description and base URL:
+ * explicit configuration > class annotations (`@Postman\Collection`, `@Postman\Description`,
+ * `@Postman\BaseUrl`, first one found wins) > built-in defaults.
  */
 class PostmanGenerator extends Component
 {
+    const DEFAULT_NAME = 'API Collection';
+    const DEFAULT_BASE_URL = 'http://localhost';
+
     /**
-     * @var array Directorios a escanear (aliases de Yii)
+     * @var string[] Directories to scan (Yii aliases allowed). Subdirectories are scanned too.
      */
     public $scanDirs = [];
 
     /**
-     * @var string Nombre de la colección
+     * @var string|null Collection name. Null = use `@Postman\Collection` or the default.
      */
-    public $collectionName = 'API Collection';
+    public $collectionName;
 
     /**
-     * @var string Descripción de la colección
+     * @var string|null Collection description. Null = use `@Postman\Description` or empty.
      */
-    public $collectionDescription = '';
+    public $collectionDescription;
 
     /**
-     * @var array Variables de la colección
+     * @var array Collection variables (key => value). A `baseUrl` key here overrides `@Postman\BaseUrl`.
      */
     public $variables = [];
 
     /**
-     * @var bool Si es true, incluye también los endpoints marcados con @Postman\Hidden
+     * @var bool Include actions annotated with `@Postman\Hidden`.
      */
     public $includeHidden = false;
 
-    /**
-     * @var AnnotationParser
-     */
+    /** @var AnnotationParser */
     protected $parser;
 
-    /**
-     * @var CollectionBuilder
-     */
+    /** @var CollectionBuilder */
     protected $builder;
 
     /**
@@ -64,64 +67,89 @@ class PostmanGenerator extends Component
     }
 
     /**
-     * Genera la colección Postman y la guarda en un archivo
-     * 
-     * @param string $outputPath Ruta de salida (puede usar aliases)
+     * Builds the collection and writes it to a file.
+     *
+     * @param string $outputPath File path, Yii aliases allowed
      * @return bool
      */
     public function generate(string $outputPath): bool
     {
-        $controllers = $this->findControllers();
+        $json = $this->generateJson();
 
-        // Inicializar builder
-        $this->builder->init(
-            $this->collectionName,
-            $this->collectionDescription,
-            $this->variables
-        );
-
-        // Procesar cada controlador
-        foreach ($controllers as $controllerClass) {
-            $this->processController($controllerClass);
-        }
-
-        // Guardar archivo
         $fullPath = Yii::getAlias($outputPath);
         $dir = dirname($fullPath);
-
         if (!is_dir($dir)) {
             FileHelper::createDirectory($dir);
         }
 
-        return file_put_contents($fullPath, $this->builder->toJson()) !== false;
+        return file_put_contents($fullPath, $json) !== false;
     }
 
     /**
-     * Genera y retorna la colección como string JSON
-     * 
+     * Builds the collection and returns it as a JSON string.
+     *
      * @return string
      */
     public function generateJson(): string
     {
-        $controllers = $this->findControllers();
-
-        $this->builder->init(
-            $this->collectionName,
-            $this->collectionDescription,
-            $this->variables
-        );
-
-        foreach ($controllers as $controllerClass) {
-            $this->processController($controllerClass);
-        }
-
-        return $this->builder->toJson();
+        return json_encode($this->generateArray(), JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
     }
 
     /**
-     * Busca todos los controladores en los directorios configurados
-     * 
-     * @return array Lista de nombres de clases
+     * Builds the collection and returns it as an array.
+     *
+     * @return array
+     */
+    public function generateArray(): array
+    {
+        $annotated = ['name' => null, 'description' => null, 'baseUrl' => null, 'variables' => []];
+        $parsed = [];
+
+        foreach ($this->findControllers() as $controllerClass) {
+            try {
+                $data = $this->parser->parseClass($controllerClass);
+            } catch (\Throwable $e) {
+                Yii::warning("Skipping {$controllerClass}: " . $e->getMessage(), __METHOD__);
+                continue;
+            }
+            $parsed[] = $data;
+
+            foreach (['name' => 'collection', 'description' => 'description', 'baseUrl' => 'baseUrl'] as $key => $source) {
+                if ($annotated[$key] === null && !empty($data[$source])) {
+                    $annotated[$key] = $data[$source];
+                }
+            }
+            $annotated['variables'] += $data['variables'];
+        }
+
+        $variables = $this->variables;
+        if (!isset($variables['baseUrl'])) {
+            $variables['baseUrl'] = $annotated['baseUrl'] !== null ? $annotated['baseUrl'] : self::DEFAULT_BASE_URL;
+        }
+
+        $this->builder->init(
+            $this->collectionName !== null ? $this->collectionName : ($annotated['name'] !== null ? $annotated['name'] : self::DEFAULT_NAME),
+            $this->collectionDescription !== null ? $this->collectionDescription : (string) $annotated['description'],
+            $variables
+        );
+        $this->builder->addVariables($annotated['variables'], false);
+
+        foreach ($parsed as $data) {
+            foreach ($data['requests'] as $request) {
+                if (!empty($request['hidden']) && !$this->includeHidden) {
+                    continue;
+                }
+                $this->builder->addRequest($request);
+            }
+        }
+
+        return $this->builder->build();
+    }
+
+    /**
+     * Returns the fully qualified class names of every `*Controller.php` file in {@see $scanDirs}.
+     *
+     * @return string[]
      */
     protected function findControllers(): array
     {
@@ -139,73 +167,82 @@ class PostmanGenerator extends Component
                 'only' => ['*Controller.php'],
                 'recursive' => true,
             ]);
+            sort($files);
 
             foreach ($files as $file) {
                 $className = $this->getClassNameFromFile($file);
-                if ($className) {
+                if ($className === null) {
+                    continue;
+                }
+                if (class_exists($className)) {
                     $controllers[] = $className;
+                } else {
+                    Yii::warning("Class {$className} from {$file} is not autoloadable, skipped", __METHOD__);
                 }
             }
         }
 
-        return $controllers;
+        return array_values(array_unique($controllers));
     }
 
     /**
-     * Extrae el nombre de la clase de un archivo PHP
-     * 
-     * @param string $file Ruta al archivo
+     * Extracts the fully qualified name of the first class declared in a PHP file,
+     * using the tokenizer so that the word "class" in comments or strings is ignored.
+     *
+     * @param string $file
      * @return string|null
      */
     protected function getClassNameFromFile(string $file): ?string
     {
-        $content = file_get_contents($file);
-
-        // Extraer namespace
+        $tokens = token_get_all((string) file_get_contents($file));
         $namespace = '';
-        if (preg_match('/namespace\s+([^;]+);/', $content, $matches)) {
-            $namespace = $matches[1];
+        $count = count($tokens);
+
+        $nameTokens = [T_STRING, T_NS_SEPARATOR];
+        if (defined('T_NAME_QUALIFIED')) {
+            $nameTokens[] = T_NAME_QUALIFIED;
+            $nameTokens[] = T_NAME_FULLY_QUALIFIED;
         }
 
-        // Extraer nombre de clase
-        if (preg_match('/class\s+(\w+)/', $content, $matches)) {
-            $className = $matches[1];
-            return $namespace ? $namespace . '\\' . $className : $className;
+        for ($i = 0; $i < $count; $i++) {
+            if (!is_array($tokens[$i])) {
+                continue;
+            }
+
+            if ($tokens[$i][0] === T_NAMESPACE) {
+                $namespace = '';
+                for ($j = $i + 1; $j < $count; $j++) {
+                    if (is_array($tokens[$j]) && in_array($tokens[$j][0], $nameTokens, true)) {
+                        $namespace .= $tokens[$j][1];
+                    } elseif ($tokens[$j] === ';' || $tokens[$j] === '{') {
+                        break;
+                    }
+                }
+                continue;
+            }
+
+            if ($tokens[$i][0] === T_CLASS) {
+                // Skip "Foo::class" and "new class"
+                $prev = $i - 1;
+                while ($prev >= 0 && is_array($tokens[$prev]) && $tokens[$prev][0] === T_WHITESPACE) {
+                    $prev--;
+                }
+                if ($prev >= 0 && is_array($tokens[$prev]) && in_array($tokens[$prev][0], [T_DOUBLE_COLON, T_NEW], true)) {
+                    continue;
+                }
+
+                for ($j = $i + 1; $j < $count; $j++) {
+                    if (is_array($tokens[$j]) && $tokens[$j][0] === T_STRING) {
+                        return ltrim($namespace . '\\' . $tokens[$j][1], '\\');
+                    }
+                    if (is_array($tokens[$j]) && $tokens[$j][0] === T_WHITESPACE) {
+                        continue;
+                    }
+                    break;
+                }
+            }
         }
 
         return null;
-    }
-
-    /**
-     * Procesa un controlador y añade sus requests al builder
-     * 
-     * @param string $controllerClass
-     */
-    protected function processController(string $controllerClass): void
-    {
-        try {
-            $data = $this->parser->parseClass($controllerClass);
-
-            // Actualizar nombre de colección si está definido en anotaciones
-            if (!empty($data['collection'])) {
-                $this->builder->init(
-                    $data['collection'],
-                    $data['description'] ?? $this->collectionDescription,
-                    array_merge($this->variables, $data['variables'] ?? [])
-                );
-            }
-
-            // Añadir requests (filtrar los ocultos si no se incluyen)
-            foreach ($data['requests'] as $request) {
-                // Si el request está marcado como hidden y no se incluyen ocultos, saltar
-                if (!empty($request['hidden']) && !$this->includeHidden) {
-                    continue;
-                }
-                $this->builder->addRequest($request);
-            }
-
-        } catch (\Exception $e) {
-            Yii::warning("Error processing controller {$controllerClass}: " . $e->getMessage(), __METHOD__);
-        }
     }
 }

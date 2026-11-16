@@ -1,14 +1,23 @@
 {
     "name": "iguazoft/yii2-postman-generator",
-    "description": "Yii2 extension to generate Postman collections from PHPDoc annotations",
+    "description": "Generate Postman collections (v2.1) from PHPDoc annotations in your Yii2 controllers. Works with Insomnia, Bruno and Hoppscotch too.",
     "type": "yii2-extension",
     "keywords": [
         "yii2",
+        "yii2-extension",
         "postman",
+        "postman-collection",
         "api",
+        "rest",
+        "api-documentation",
         "documentation",
-        "phpdoc"
+        "phpdoc",
+        "annotations",
+        "insomnia",
+        "bruno",
+        "hoppscotch"
     ],
+    "homepage": "https://github.com/dannyrios81/yii2-postman-generator",
     "license": "MIT",
     "authors": [
         {
@@ -16,16 +25,45 @@
             "email": "soporte@iguazoft.com"
         }
     ],
+    "support": {
+        "issues": "https://github.com/dannyrios81/yii2-postman-generator/issues",
+        "source": "https://github.com/dannyrios81/yii2-postman-generator"
+    },
     "require": {
         "php": ">=7.4",
         "yiisoft/yii2": "~2.0.0"
+    },
+    "require-dev": {
+        "phpunit/phpunit": "^9.6"
     },
     "autoload": {
         "psr-4": {
             "iguazoft\\postman\\": "src/"
         }
     },
+    "autoload-dev": {
+        "psr-4": {
+            "iguazoft\\postman\\tests\\": "tests/"
+        }
+    },
     "extra": {
-        "bootstrap": "iguazoft\\postman\\Bootstrap"
-    }
+        "bootstrap": "iguazoft\\postman\\Bootstrap",
+        "branch-alias": {
+            "dev-main": "1.1.x-dev"
+        }
+    },
+    "scripts": {
+        "test": "phpunit"
+    },
+    "config": {
+        "allow-plugins": {
+            "yiisoft/yii2-composer": true
+        }
+    },
+    "repositories": [
+        {
+            "type": "composer",
+            "url": "https://asset-packagist.org"
+        }
+    ]
 }

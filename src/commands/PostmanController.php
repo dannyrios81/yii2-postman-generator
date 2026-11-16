@@ -9,39 +9,39 @@ use yii\helpers\Console;
 use iguazoft\postman\PostmanGenerator;
 
 /**
- * Comando para generar colecciones de Postman desde anotaciones PHPDoc
- * 
- * Uso:
+ * Generates Postman collections from `@Postman\...` PHPDoc annotations.
+ *
  * ```
  * php yii postman/generate
- * php yii postman/generate --output=docs/api.json
+ * php yii postman/generate --output=@app/docs/api.json
  * php yii postman/generate --dirs=@app/controllers,@app/modules/api/controllers
+ * php yii postman/generate --name="My API" --base-url=https://api.example.com
  * ```
  */
 class PostmanController extends Controller
 {
     /**
-     * @var string Archivo de salida (puede usar aliases de Yii)
+     * @var string Output file (Yii aliases allowed)
      */
     public $output = '@app/docs/api.postman_collection.json';
 
     /**
-     * @var string Directorios a escanear, separados por coma
+     * @var string Comma separated directories to scan
      */
     public $dirs = '@app/controllers';
 
     /**
-     * @var string Nombre de la colección
+     * @var string|null Collection name. Defaults to `@Postman\Collection` or "API Collection"
      */
-    public $name = 'API Collection';
+    public $name;
 
     /**
-     * @var string URL base
+     * @var string|null Value of the `{{baseUrl}}` variable. Defaults to `@Postman\BaseUrl` or http://localhost
      */
-    public $baseUrl = 'http://localhost';
+    public $baseUrl;
 
     /**
-     * @var bool Incluir endpoints marcados con @Postman\Hidden
+     * @var bool Include actions annotated with `@Postman\Hidden`
      */
     public $includeHidden = false;
 
@@ -50,13 +50,12 @@ class PostmanController extends Controller
      */
     public function options($actionID)
     {
-        return array_merge(parent::options($actionID), [
-            'output',
-            'dirs',
-            'name',
-            'baseUrl',
-            'includeHidden',
-        ]);
+        $options = parent::options($actionID);
+        if ($actionID === 'generate') {
+            $options = array_merge($options, ['output', 'dirs', 'name', 'baseUrl', 'includeHidden']);
+        }
+
+        return $options;
     }
 
     /**
@@ -74,86 +73,98 @@ class PostmanController extends Controller
     }
 
     /**
-     * Genera una colección de Postman desde anotaciones PHPDoc
-     * 
+     * Generates a Postman collection from PHPDoc annotations.
+     *
      * @return int
      */
     public function actionGenerate(): int
     {
-        $this->stdout("Generando colección Postman...\n", Console::FG_CYAN);
+        $scanDirs = array_values(array_filter(array_map('trim', explode(',', $this->dirs))));
 
-        $scanDirs = array_map('trim', explode(',', $this->dirs));
+        $variables = [];
+        if ($this->baseUrl !== null && $this->baseUrl !== '') {
+            $variables['baseUrl'] = $this->baseUrl;
+        }
 
         $generator = new PostmanGenerator([
             'scanDirs' => $scanDirs,
-            'collectionName' => $this->name,
-            'variables' => [
-                'baseUrl' => $this->baseUrl,
-            ],
-            'includeHidden' => $this->includeHidden,
+            'collectionName' => $this->name !== '' ? $this->name : null,
+            'variables' => $variables,
+            'includeHidden' => (bool) $this->includeHidden,
         ]);
 
-        $outputPath = Yii::getAlias($this->output);
-
-        $this->stdout("Escaneando directorios:\n", Console::FG_YELLOW);
+        $this->stdout("Scanning:\n", Console::FG_YELLOW);
         foreach ($scanDirs as $dir) {
-            $this->stdout("  - " . Yii::getAlias($dir) . "\n");
+            $this->stdout('  - ' . Yii::getAlias($dir) . "\n");
         }
 
+        $collection = $generator->generateArray();
+        $count = $this->countRequests($collection['item']);
+
         if ($generator->generate($this->output)) {
-            $this->stdout("\n✓ Colección generada exitosamente:\n", Console::FG_GREEN);
-            $this->stdout("  " . $outputPath . "\n\n");
+            $this->stdout("\n✓ {$count} request(s) written to " . Yii::getAlias($this->output) . "\n", Console::FG_GREEN);
+            if ($count === 0) {
+                $this->stdout("  No action has a @Postman\\Request annotation. Run `php yii postman/help`.\n", Console::FG_YELLOW);
+            }
+
             return ExitCode::OK;
         }
 
-        $this->stderr("✗ Error al generar la colección\n", Console::FG_RED);
+        $this->stderr("✗ Could not write the collection file\n", Console::FG_RED);
+
         return ExitCode::UNSPECIFIED_ERROR;
     }
 
     /**
-     * Muestra ayuda sobre las anotaciones disponibles
-     * 
+     * Shows the annotation reference.
+     *
      * @return int
      */
     public function actionHelp(): int
     {
-        $this->stdout("\n");
-        $this->stdout("=== Yii2 Postman Generator ===\n", Console::FG_CYAN, Console::BOLD);
-        $this->stdout("\n");
+        $this->stdout("\n=== Yii2 Postman Generator ===\n\n", Console::FG_CYAN, Console::BOLD);
 
-        $this->stdout("Anotaciones de Clase:\n", Console::FG_YELLOW);
-        $this->stdout("  @Postman\\Collection(\"Nombre\")      - Nombre de la colección\n");
-        $this->stdout("  @Postman\\Description(\"Desc\")       - Descripción de la colección\n");
-        $this->stdout("  @Postman\\Variable(\"key\", \"value\")  - Variable de la colección\n");
-        $this->stdout("\n");
+        $this->stdout("Class annotations:\n", Console::FG_YELLOW);
+        $this->stdout("  @Postman\\Collection(\"Name\")              Collection name\n");
+        $this->stdout("  @Postman\\Description(\"Text\")             Collection description\n");
+        $this->stdout("  @Postman\\BaseUrl(\"https://api.test\")      Default {{baseUrl}}\n");
+        $this->stdout("  @Postman\\Variable(\"key\", \"value\")        Collection variable (repeatable)\n\n");
 
-        $this->stdout("Anotaciones de Método:\n", Console::FG_YELLOW);
-        $this->stdout("  @Postman\\Request(\"Nombre\")         - Nombre del request (requerido)\n");
-        $this->stdout("  @Postman\\Folder(\"Carpeta\")         - Carpeta donde agrupar\n");
-        $this->stdout("  @Postman\\Method(\"POST\")            - Método HTTP (GET, POST, PUT, DELETE)\n");
-        $this->stdout("  @Postman\\Path(\"/api/endpoint\")     - Ruta del endpoint\n");
-        $this->stdout("  @Postman\\Description(\"Desc\")       - Descripción del request\n");
-        $this->stdout("  @Postman\\Auth(\"bearer\", \"{{token}}\") - Autenticación\n");
-        $this->stdout("  @Postman\\Body({...})               - Body JSON del request\n");
-        $this->stdout("  @Postman\\Header(\"key\", \"value\")    - Header personalizado\n");
-        $this->stdout("  @Postman\\Hidden                     - Ocultar endpoint (no incluir por defecto)\n");
-        $this->stdout("\n");
+        $this->stdout("Action annotations:\n", Console::FG_YELLOW);
+        $this->stdout("  @Postman\\Request(\"Name\")                 Request name (required)\n");
+        $this->stdout("  @Postman\\Method(\"POST\")                   HTTP method (default GET)\n");
+        $this->stdout("  @Postman\\Path(\"/api/users/:id\")           Path; :id and {id} become path variables\n");
+        $this->stdout("  @Postman\\Folder(\"Users\")                  Folder\n");
+        $this->stdout("  @Postman\\Description(\"Text\")              Request description\n");
+        $this->stdout("  @Postman\\Auth(\"bearer\", \"{{token}}\")       Bearer token\n");
+        $this->stdout("  @Postman\\Auth(\"basic\", \"user\", \"pass\")     Basic auth\n");
+        $this->stdout("  @Postman\\Auth(\"apikey\", \"X-Api-Key\", \"{{apiKey}}\")  API key header\n");
+        $this->stdout("  @Postman\\Body({\"name\": \"John\"})          JSON body, may span several lines\n");
+        $this->stdout("  @Postman\\Header(\"key\", \"value\")          Header (repeatable)\n");
+        $this->stdout("  @Postman\\Query(\"key\", \"value\")           Query parameter (repeatable)\n");
+        $this->stdout("  @Postman\\Hidden                         Skip unless --include-hidden\n\n");
 
-        $this->stdout("Opciones de Comando:\n", Console::FG_YELLOW);
-        $this->stdout("  --include-hidden, -a                - Incluir endpoints marcados como @Postman\\Hidden\n");
-        $this->stdout("\n");
-
-        $this->stdout("Ejemplo:\n", Console::FG_GREEN);
-        $this->stdout("/**\n");
-        $this->stdout(" * @Postman\\Request(\"Crear Usuario\")\n");
-        $this->stdout(" * @Postman\\Folder(\"Usuarios\")\n");
-        $this->stdout(" * @Postman\\Method(\"POST\")\n");
-        $this->stdout(" * @Postman\\Path(\"/api/users\")\n");
-        $this->stdout(" * @Postman\\Auth(\"bearer\", \"{{token}}\")\n");
-        $this->stdout(" */\n");
-        $this->stdout("public function actionCreate() { }\n");
-        $this->stdout("\n");
+        $this->stdout("Options of postman/generate:\n", Console::FG_YELLOW);
+        $this->stdout("  --output, -o          Output file (default @app/docs/api.postman_collection.json)\n");
+        $this->stdout("  --dirs, -d            Comma separated directories (default @app/controllers)\n");
+        $this->stdout("  --name, -n            Collection name\n");
+        $this->stdout("  --base-url, -u        {{baseUrl}} value\n");
+        $this->stdout("  --include-hidden, -a  Include @Postman\\Hidden actions\n\n");
 
         return ExitCode::OK;
+    }
+
+    /**
+     * @param array $items
+     * @return int
+     */
+    private function countRequests(array $items): int
+    {
+        $count = 0;
+        foreach ($items as $item) {
+            $count += isset($item['request']) ? 1 : $this->countRequests(isset($item['item']) ? $item['item'] : []);
+        }
+
+        return $count;
     }
 }
