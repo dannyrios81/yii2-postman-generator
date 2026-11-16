@@ -12,6 +12,8 @@ No OpenAPI spec to write and maintain, no extra dependencies: only Yii2.
 
 [Leer en español](README.es.md)
 
+![Annotate your controllers, run one command, get a Postman collection](docs/cover.png)
+
 ```php
 /**
  * @Postman\Request("Create user")
