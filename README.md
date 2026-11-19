@@ -22,6 +22,8 @@ No OpenAPI spec to write and maintain, no extra dependencies: only Yii2.
  * @Postman\Path("/api/users")
  * @Postman\Auth("bearer", "{{token}}")
  * @Postman\Body({"name": "John Doe", "email": "john@example.com"})
+ * @Postman\Test("status", "201")
+ * @Postman\Test("json", "data.id")
  */
 public function actionCreate() { /* ... */ }
 ```
@@ -124,6 +126,7 @@ In Postman: **Import → File → `api.postman_collection.json`**. Set `token` i
 | `@Postman\Description("Text")` | Collection description. |
 | `@Postman\BaseUrl("https://api.example.com")` | Default value of `{{baseUrl}}`. |
 | `@Postman\Variable("key", "value")` | Collection variable. Repeatable. |
+| `@Postman\Test(...)` | Test applied to every action of the controller. See [Tests](#tests). |
 
 ### Action level
 
@@ -141,8 +144,55 @@ In Postman: **Import → File → `api.postman_collection.json`**. Set `token` i
 | `@Postman\Header("key", "value")` | Request header. Repeatable. |
 | `@Postman\Query("key", "value")` | Query parameter. Repeatable. |
 | `@Postman\Hidden` | Not exported unless `--include-hidden`. |
+| `@Postman\Test(...)` | Test script assertion. Repeatable. See [Tests](#tests). |
 
-Arguments can use double quotes, single quotes, or no quotes. Quoted values may contain commas and parentheses.
+Arguments can use double quotes, single quotes, or no quotes. Quoted values may contain commas and parentheses. Escape a quote inside a quoted value with a backslash: `"John \"Johnny\" Doe"`.
+
+### Tests
+
+`@Postman\Test` adds assertions to the request's **Tests** script, so the collection checks your API, not only calls it. Postman runs them after each request; [Newman](https://github.com/postmanlabs/newman) runs them in CI.
+
+| Annotation | Generated assertion |
+|---|---|
+| `@Postman\Test("status", "201")` | Status code is 201. |
+| `@Postman\Test("json", "data.id")` | The JSON body has `data.id` (dot path, `items[0].id` works too). |
+| `@Postman\Test("json", "data.active", "true")` | ... and it equals `true`. Valid JSON (`true`, `42`, `null`, `"42"`, `[1,2]`) keeps its type; anything else is compared as a string. |
+| `@Postman\Test("header", "Content-Type")` | The response has the header. |
+| `@Postman\Test("header", "X-Api-Version", "2")` | ... with this exact value. |
+| `@Postman\Test("time", "500")` | Response time is below 500 ms. |
+| `@Postman\Test("contains", "created")` | The body text contains the string. |
+
+Tests on the **class** apply to every action of that controller; action tests are added after them. An action `status` or `time` test replaces the class one, so a controller can expect `200` while its `actionCreate` expects `201`.
+
+```php
+/**
+ * @Postman\Test("status", "200")
+ * @Postman\Test("header", "Content-Type", "application/json; charset=UTF-8")
+ */
+class UserController extends Controller
+{
+    /**
+     * @Postman\Request("Create user")
+     * @Postman\Method("POST")
+     * @Postman\Path("/api/users")
+     * @Postman\Test("status", "201")
+     * @Postman\Test("json", "data.id")
+     * @Postman\Test("time", "500")
+     */
+    public function actionCreate() { /* ... */ }
+}
+```
+
+Generated script for `Create user`:
+
+```js
+pm.test("Header Content-Type is application/json; charset=UTF-8", function () { pm.response.to.have.header("Content-Type", "application/json; charset=UTF-8"); });
+pm.test("Status code is 201", function () { pm.response.to.have.status(201); });
+pm.test("Response has data.id", function () { pm.expect(pm.response.json()).to.have.nested.property("data.id"); });
+pm.test("Response time is below 500 ms", function () { pm.expect(pm.response.responseTime).to.be.below(500); });
+```
+
+A typo (`@Postman\Test("statuss", "200")`) or a missing value stops the command with the controller and action name and exit code 65, so CI fails instead of exporting a collection without the test.
 
 ## Programmatic use
 
@@ -167,6 +217,14 @@ $array = $generator->generateArray();                         // or the array
 # .github/workflows/postman.yml
 - run: php yii postman/generate -o=@app/docs/api.postman_collection.json
 - run: git diff --exit-code docs/api.postman_collection.json || (echo "Run php yii postman/generate and commit the result" && exit 1)
+```
+
+Run the `@Postman\Test` assertions against a test server with Newman:
+
+```yaml
+# .github/workflows/api-tests.yml (after starting your API on port 8080)
+- run: php yii postman/generate -o=@app/docs/api.postman_collection.json
+- run: npx newman run docs/api.postman_collection.json --env-var "baseUrl=http://localhost:8080" --env-var "token=${{ secrets.API_TEST_TOKEN }}"
 ```
 
 ## Requirements

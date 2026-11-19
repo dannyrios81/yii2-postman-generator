@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.2.0 - 2026-11-19
+
+### Added
+- `@Postman\Test("type", "value"[, "expected"])` generates the request's test script (`pm.test`). Types: `status`, `json`, `header`, `time`, `contains`. Repeatable, on actions and on the controller class (class tests apply to every action; an action `status` or `time` replaces the class one). Closes #1.
+
+### Changed
+- A malformed `@Postman\Test` throws `iguazoft\postman\InvalidAnnotationException` naming the controller and action. `postman/generate` prints it and exits with code 65 instead of exporting an incomplete collection. Other errors while reading a controller are still logged and the controller is skipped.
+
 ## 1.1.0 - 2026-11-16
 
 ### Fixed

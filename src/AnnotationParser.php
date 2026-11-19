@@ -39,6 +39,7 @@ class AnnotationParser
             'description' => $this->parseAnnotation($classDoc, 'Description'),
             'baseUrl' => $this->parseAnnotation($classDoc, 'BaseUrl'),
             'variables' => $this->parseKeyValueAnnotations($classDoc, 'Variable'),
+            'tests' => $this->parseTestAnnotations($classDoc, $className),
             'requests' => [],
         ];
 
@@ -86,7 +87,30 @@ class AnnotationParser
             'headers' => $this->parseKeyValueAnnotations($doc, 'Header'),
             'queryParams' => $this->parseKeyValueAnnotations($doc, 'Query'),
             'hidden' => $this->parseBooleanAnnotation($doc, 'Hidden'),
+            'tests' => $this->parseTestAnnotations($doc, $method->class . '::' . $method->getName() . '()'),
         ];
+    }
+
+    /**
+     * Parses repeated `@Postman\Test("type", "value"[, "expected"])` annotations.
+     *
+     * @param string $doc
+     * @param string $location Class or method, used in error messages
+     * @return array List of argument lists
+     * @throws InvalidAnnotationException
+     */
+    protected function parseTestAnnotations(string $doc, string $location): array
+    {
+        $tests = [];
+        foreach ($this->findAnnotationArguments($doc, 'Test') as $args) {
+            $error = TestScriptBuilder::validate($args);
+            if ($error !== null) {
+                throw new InvalidAnnotationException("$location: $error");
+            }
+            $tests[] = $args;
+        }
+
+        return $tests;
     }
 
     /**

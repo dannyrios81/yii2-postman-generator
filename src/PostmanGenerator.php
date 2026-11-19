@@ -108,6 +108,9 @@ class PostmanGenerator extends Component
         foreach ($this->findControllers() as $controllerClass) {
             try {
                 $data = $this->parser->parseClass($controllerClass);
+            } catch (InvalidAnnotationException $e) {
+                // A typo in an annotation must fail loudly, not export a collection without it.
+                throw $e;
             } catch (\Throwable $e) {
                 Yii::warning("Skipping {$controllerClass}: " . $e->getMessage(), __METHOD__);
                 continue;
@@ -139,11 +142,34 @@ class PostmanGenerator extends Component
                 if (!empty($request['hidden']) && !$this->includeHidden) {
                     continue;
                 }
+                // Class-level @Postman\Test annotations apply to every action of the controller.
+                $request['tests'] = $this->mergeTests(isset($data['tests']) ? $data['tests'] : [], isset($request['tests']) ? $request['tests'] : []);
                 $this->builder->addRequest($request);
             }
         }
 
         return $this->builder->build();
+    }
+
+    /**
+     * Class tests first, then action tests; identical tests are kept once. An action test of the same
+     * type and target (for example another expected status) replaces the class one.
+     *
+     * @param array $classTests
+     * @param array $actionTests
+     * @return array
+     */
+    protected function mergeTests(array $classTests, array $actionTests): array
+    {
+        $merged = [];
+        foreach (array_merge($classTests, $actionTests) as $args) {
+            $type = strtolower(trim($args[0]));
+            $key = $type === 'status' || $type === 'time' ? $type : $type . "\0" . $args[1];
+            unset($merged[$key]);
+            $merged[$key] = $args;
+        }
+
+        return array_values($merged);
     }
 
     /**

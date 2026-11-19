@@ -98,7 +98,13 @@ class PostmanController extends Controller
             $this->stdout('  - ' . Yii::getAlias($dir) . "\n");
         }
 
-        $collection = $generator->generateArray();
+        try {
+            $collection = $generator->generateArray();
+        } catch (\iguazoft\postman\InvalidAnnotationException $e) {
+            $this->stderr("✗ " . $e->getMessage() . "\n", Console::FG_RED);
+
+            return ExitCode::DATAERR;
+        }
         $count = $this->countRequests($collection['item']);
 
         if ($generator->generate($this->output)) {
@@ -142,7 +148,13 @@ class PostmanController extends Controller
         $this->stdout("  @Postman\\Body({\"name\": \"John\"})          JSON body, may span several lines\n");
         $this->stdout("  @Postman\\Header(\"key\", \"value\")          Header (repeatable)\n");
         $this->stdout("  @Postman\\Query(\"key\", \"value\")           Query parameter (repeatable)\n");
-        $this->stdout("  @Postman\\Hidden                         Skip unless --include-hidden\n\n");
+        $this->stdout("  @Postman\\Hidden                         Skip unless --include-hidden\n");
+        $this->stdout("  @Postman\\Test(\"status\", \"200\")          Test: status code (repeatable, also on the class)\n");
+        $this->stdout("  @Postman\\Test(\"json\", \"data.id\")          Test: JSON property exists\n");
+        $this->stdout("  @Postman\\Test(\"json\", \"data.ok\", \"true\")  Test: JSON property equals a value\n");
+        $this->stdout("  @Postman\\Test(\"header\", \"X-Id\"[, \"v\"])   Test: header present (or equals)\n");
+        $this->stdout("  @Postman\\Test(\"time\", \"500\")            Test: response time below N ms\n");
+        $this->stdout("  @Postman\\Test(\"contains\", \"text\")        Test: body contains text\n\n");
 
         $this->stdout("Options of postman/generate:\n", Console::FG_YELLOW);
         $this->stdout("  --output, -o          Output file (default @app/docs/api.postman_collection.json)\n");

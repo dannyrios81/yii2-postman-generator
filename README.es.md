@@ -54,7 +54,7 @@ El comando `postman` se registra solo mediante el bootstrap de extensiones de Yi
 
 ## Anotaciones
 
-**De clase:** `@Postman\Collection("Nombre")`, `@Postman\Description("Texto")`, `@Postman\BaseUrl("https://...")`, `@Postman\Variable("clave", "valor")` (repetible).
+**De clase:** `@Postman\Collection("Nombre")`, `@Postman\Description("Texto")`, `@Postman\BaseUrl("https://...")`, `@Postman\Variable("clave", "valor")` (repetible), `@Postman\Test(...)` (se aplica a todas las acciones del controlador).
 
 **De acción:**
 
@@ -72,6 +72,32 @@ El comando `postman` se registra solo mediante el bootstrap de extensiones de Yi
 | `@Postman\Header("clave", "valor")` | Header. Repetible. |
 | `@Postman\Query("clave", "valor")` | Parámetro de query. Repetible. |
 | `@Postman\Hidden` | No se exporta salvo con `--include-hidden`. |
+| `@Postman\Test(...)` | Assert en el script de tests. Repetible. Ver [Tests](#tests). |
+
+### Tests
+
+`@Postman\Test` agrega asserts al script **Tests** del request: la colección verifica la API, no solo la llama. Postman los ejecuta después de cada request y [Newman](https://github.com/postmanlabs/newman) los ejecuta en CI.
+
+| Anotación | Assert generado |
+|---|---|
+| `@Postman\Test("status", "201")` | El status code es 201. |
+| `@Postman\Test("json", "data.id")` | El JSON tiene `data.id` (ruta con puntos; `items[0].id` también sirve). |
+| `@Postman\Test("json", "data.active", "true")` | ... y vale `true`. Un JSON válido (`true`, `42`, `null`, `"42"`, `[1,2]`) conserva su tipo; lo demás se compara como texto. |
+| `@Postman\Test("header", "Content-Type")` | La respuesta trae el header. |
+| `@Postman\Test("header", "X-Api-Version", "2")` | ... con ese valor exacto. |
+| `@Postman\Test("time", "500")` | Responde en menos de 500 ms. |
+| `@Postman\Test("contains", "created")` | El body contiene el texto. |
+
+Los tests de la **clase** aplican a todas sus acciones y los de la acción se agregan después. Un `status` o `time` en la acción reemplaza el de la clase: el controlador espera `200` y su `actionCreate` espera `201`.
+
+Un error de escritura (`@Postman\Test("statuss", "200")`) o un valor faltante detiene el comando con el nombre del controlador y la acción, y código de salida 65: el CI falla en vez de exportar la colección sin el test.
+
+Ejecutar los tests en CI con Newman, con la API corriendo en el puerto 8080:
+
+```yaml
+- run: php yii postman/generate -o=@app/docs/api.postman_collection.json
+- run: npx newman run docs/api.postman_collection.json --env-var "baseUrl=http://localhost:8080"
+```
 
 ## Uso programático
 

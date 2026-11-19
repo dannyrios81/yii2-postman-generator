@@ -114,7 +114,19 @@
                             ]
                         }
                     },
-                    "response": []
+                    "response": [],
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test(\"Status code is 200\", function () { pm.response.to.have.status(200); });",
+                                    "pm.test(\"Header Content-Type is application/json; charset=UTF-8\", function () { pm.response.to.have.header(\"Content-Type\", \"application/json; charset=UTF-8\"); });"
+                                ]
+                            }
+                        }
+                    ]
                 },
                 {
                     "name": "Create user",
@@ -150,7 +162,23 @@
                             }
                         }
                     },
-                    "response": []
+                    "response": [],
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test(\"Header Content-Type is application/json; charset=UTF-8\", function () { pm.response.to.have.header(\"Content-Type\", \"application/json; charset=UTF-8\"); });",
+                                    "pm.test(\"Status code is 201\", function () { pm.response.to.have.status(201); });",
+                                    "pm.test(\"Response has data.id\", function () { pm.expect(pm.response.json()).to.have.nested.property(\"data.id\"); });",
+                                    "pm.test(\"data.active is true\", function () { pm.expect(pm.response.json()).to.have.nested.property(\"data.active\", true); });",
+                                    "pm.test(\"data.name is John \\\"Johnny\\\" Doe\", function () { pm.expect(pm.response.json()).to.have.nested.property(\"data.name\", \"John \\\"Johnny\\\" Doe\"); });",
+                                    "pm.test(\"Response time is below 500 ms\", function () { pm.expect(pm.response.responseTime).to.be.below(500); });"
+                                ]
+                            }
+                        }
+                    ]
                 },
                 {
                     "name": "View user",
@@ -190,7 +218,20 @@
                             ]
                         }
                     },
-                    "response": []
+                    "response": [],
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test(\"Status code is 200\", function () { pm.response.to.have.status(200); });",
+                                    "pm.test(\"Header Content-Type is application/json; charset=UTF-8\", function () { pm.response.to.have.header(\"Content-Type\", \"application/json; charset=UTF-8\"); });",
+                                    "pm.test(\"Body contains username\", function () { pm.expect(pm.response.text()).to.include(\"username\"); });"
+                                ]
+                            }
+                        }
+                    ]
                 }
             ]
         }

@@ -206,6 +206,16 @@ class CollectionBuilder
             ];
         }
 
+        if (!empty($data['tests'])) {
+            $request['event'] = [[
+                'listen' => 'test',
+                'script' => [
+                    'type' => 'text/javascript',
+                    'exec' => TestScriptBuilder::build($data['tests']),
+                ],
+            ]];
+        }
+
         if (!empty($data['headers'])) {
             foreach ($data['headers'] as $key => $value) {
                 $request['request']['header'][] = ['key' => (string) $key, 'value' => (string) $value];
